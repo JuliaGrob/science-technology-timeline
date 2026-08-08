@@ -72,6 +72,12 @@ overflow:hidden;padding:20px 12px 25px;touch-action:none}
 .think-box{margin-top:18px;padding:15px 16px;border-radius:13px;background:linear-gradient(135deg,rgba(140,124,255,.14),rgba(95,215,255,.08));border:1px solid #3c5572;line-height:1.45}
 .think-label{font-size:11px;letter-spacing:.16em;color:var(--accent);font-weight:800;margin-bottom:6px}
 
+
+/* Easier placement: the whole timeline row is a drop target.
+   The small markers are visual guides, not mandatory targets. */
+.drop-zone{pointer-events:none;opacity:.55}
+.timeline{cursor:crosshair}
+
 /* iPad performance tuning */
 .card{will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .card img{image-rendering:auto}
@@ -158,8 +164,10 @@ function makeCard(c, placed=false){
   el.addEventListener("pointerup",e=>{
     if(e.pointerType==="mouse") return;
     el.classList.remove("dragging");
-    const z=document.elementFromPoint(e.clientX,e.clientY)?.closest(".drop-zone");
-    if(z) place(c.id,Number(z.dataset.year));
+    const target=document.elementFromPoint(e.clientX,e.clientY);
+    if(target && (target.closest("#timeline") || timeline.contains(target))){
+      placeAtPoint(c.id,e.clientX,e.clientY);
+    }
     dragId=null;
   });
   return el;
@@ -168,6 +176,24 @@ function rowForYear(year){ return year <= 2025 ? 1 : 2; }
 function pctInRow(year){
   if(year <= 2025) return 3 + (year-1900)/(2025-1900)*94;
   return 3 + (year-2025)/(2150-2025)*94;
+}
+
+function yearFromPoint(clientX, clientY){
+  const rect=timeline.getBoundingClientRect();
+  const localX=clientX-rect.left;
+  const rowMid=(175+405)/2;
+  const row=(clientY-rect.top < rowMid) ? 1 : 2;
+  const min=row===1?1900:2025;
+  const max=row===1?2025:2150;
+  const ratio=Math.max(0,Math.min(1,(localX-45)/(rect.width-90)));
+  const guessed=min+ratio*(max-min);
+  const candidates=CARDS.filter(c=>rowForYear(c.year)===row);
+  return candidates.reduce((best,c)=>Math.abs(c.year-guessed)<Math.abs(best.year-guessed)?c:best,candidates[0]).year;
+}
+function placeAtPoint(id,x,y){
+  if(!id)return;
+  const year=yearFromPoint(x,y);
+  place(id,year);
 }
 function buildTimeline(){
   timeline.innerHTML='<div class="axis r1"></div><div class="axis r2"></div>'+
@@ -192,6 +218,12 @@ function buildTimeline(){
     timeline.appendChild(z);
   }
 }
+timeline.addEventListener("dragover",e=>{e.preventDefault()});
+timeline.addEventListener("drop",e=>{
+  e.preventDefault();
+  placeAtPoint(e.dataTransfer.getData("text/plain"),e.clientX,e.clientY);
+});
+
 function renderTray(){
   tray.innerHTML="";
   const ids=new Set(state.keys());
